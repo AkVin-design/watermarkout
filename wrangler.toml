@@ -1,0 +1,8 @@
+name = "watermarkout"
+compatibility_date = "2024-12-01"
+
+[site]
+bucket = "./dist"
+
+# SPA routing — serve index.html for all paths
+not_found_handling = "single-page-application"
