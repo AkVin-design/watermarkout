@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # All-actor pre-commit guard (activated via: git config core.hooksPath .githooks).
-# Complements the Claude-only PreToolUse git-guard by enforcing the same rules
-# for ANY actor -- human terminal, IDE, other tools. Blocks committing secret
-# FILES (rule #2) and secret VALUES pasted into content (gap the file-name guard
-# can't catch). Uses gitleaks if installed, else a focused high-signal regex.
+# Complements the Claude-only PreToolUse hooks by enforcing the same rules for
+# ANY actor -- human terminal, IDE, other tools:
+#   1. Block secret FILE names (rule #2).
+#   2. Block secret VALUES in staged content (gitleaks if installed, else regex).
+#   3. Auto-lint staged Python with ruff -- zero operator burden: safe fixes are
+#      applied + re-staged automatically; only unfixable errors block the commit.
 # Emergency bypass: git commit --no-verify (discouraged; you own the risk).
 set -u
 staged="$(git diff --cached --name-only --diff-filter=ACM)"
@@ -20,8 +22,8 @@ fi
 
 # 2) Secret VALUES in the staged diff
 if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks protect --staged --redact -q || {
-    echo "COMMIT BLOCKED: gitleaks detected a secret in staged content. (--no-verify to override a false positive)" >&2; exit 1; }
+  gitleaks git --staged --redact --no-banner >/dev/null 2>&1 || {
+    echo "COMMIT BLOCKED: gitleaks detected a secret in staged content. (--no-verify to override a confirmed false positive)" >&2; exit 1; }
 else
   added="$(git diff --cached -U0 --diff-filter=ACM | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
   hits="$(printf '%s' "$added" | grep -nEi -- \
@@ -29,6 +31,42 @@ else
   if [ -n "$hits" ]; then
     printf 'COMMIT BLOCKED: likely secret value in staged content:\n%s\nUse an env var / secret store. Override with --no-verify only for a confirmed false positive.\n' "$hits" >&2
     exit 1
+  fi
+fi
+
+# 3) Auto-lint staged Python (zero operator burden)
+RUFF=""
+command -v ruff >/dev/null 2>&1 && RUFF="ruff"
+[ -z "$RUFF" ] && python -m ruff --version >/dev/null 2>&1 && RUFF="python -m ruff"
+if [ -n "$RUFF" ]; then
+  pyfiles="$(printf '%s\n' "$staged" | grep -E '\.py$' || true)"
+  if [ -n "$pyfiles" ]; then
+    unstaged="$(git diff --name-only)"
+    fixed=""
+    while IFS= read -r f; do
+      [ -n "$f" ] && [ -f "$f" ] || continue
+      if printf '%s\n' "$unstaged" | grep -qxF "$f"; then
+        # Partially staged: do NOT rewrite (would fold in unstaged edits) -- check only.
+        if ! $RUFF check "$f" >/dev/null 2>&1 || ! $RUFF format --check "$f" >/dev/null 2>&1; then
+          printf 'COMMIT BLOCKED: %s has ruff issues AND unstaged changes.\nFix manually: %s check --fix "%s" && %s format "%s"\n' "$f" "$RUFF" "$f" "$RUFF" "$f" >&2
+          exit 1
+        fi
+      else
+        b="$(git hash-object "$f")"
+        $RUFF check --fix "$f" >/dev/null 2>&1 || true
+        $RUFF format "$f" >/dev/null 2>&1 || true
+        a="$(git hash-object "$f")"
+        if [ "$b" != "$a" ]; then git add "$f"; fixed="$fixed $f"; fi
+      fi
+    done <<EOF
+$pyfiles
+EOF
+    # Anything ruff could not auto-fix (real errors) blocks the commit.
+    if ! out="$($RUFF check $pyfiles 2>&1)"; then
+      printf 'COMMIT BLOCKED: ruff errors remain after auto-fix:\n%s\n' "$out" >&2
+      exit 1
+    fi
+    [ -n "$fixed" ] && echo "pre-commit: ruff auto-fixed + re-staged:$fixed"
   fi
 fi
 exit 0
