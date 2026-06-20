@@ -1,0 +1,22 @@
+{
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "BASH_DEFAULT_TIMEOUT_MS": "300000"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/git-guard.sh\"",
+            "timeout": 10,
+            "statusMessage": "git-guard: checking for force-push / secret commits"
+          }
+        ]
+      }
+    ]
+  }
+}
