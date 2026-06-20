@@ -16,6 +16,32 @@
             "statusMessage": "git-guard: checking for force-push / secret commits"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/edit-guard.sh\"",
+            "timeout": 10,
+            "statusMessage": "edit-guard: protecting migrations + Celery rules"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/lint-changed.sh\"",
+            "timeout": 60,
+            "statusMessage": "lint-changed: ruff on the edited file"
+          }
+        ]
       }
     ]
   }

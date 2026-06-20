@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# All-actor pre-push guard (activated via: git config core.hooksPath .githooks).
+# Blocks force / non-fast-forward pushes to master|main and deletion of those
+# branches, for ANY actor (hard rule #1: shared history, unrecoverable).
+# git feeds ref updates on stdin: <local ref> <local sha> <remote ref> <remote sha>
+set -u
+z="0000000000000000000000000000000000000000"
+status=0
+while read -r lref lsha rref rsha; do
+  case "$rref" in
+    refs/heads/master|refs/heads/main) ;;
+    *) continue ;;
+  esac
+  branch="${rref#refs/heads/}"
+  # Deletion of a protected branch
+  if [ "$lsha" = "$z" ]; then
+    echo "PUSH BLOCKED: refusing to delete '$branch' (hard rule #1)." >&2; status=1; continue
+  fi
+  # Brand-new branch on the remote (rsha all-zero) is a fast-forward by definition
+  [ "$rsha" = "$z" ] && continue
+  # Non-fast-forward (force / history rewrite): remote sha is NOT an ancestor of local
+  if ! git merge-base --is-ancestor "$rsha" "$lsha" 2>/dev/null; then
+    echo "PUSH BLOCKED: non-fast-forward (force) push to '$branch' is forbidden (hard rule #1: shared history, unrecoverable). Fix-forward with a new commit instead." >&2
+    status=1
+  fi
+done
+exit $status

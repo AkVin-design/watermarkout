@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# All-actor pre-commit guard (activated via: git config core.hooksPath .githooks).
+# Complements the Claude-only PreToolUse git-guard by enforcing the same rules
+# for ANY actor -- human terminal, IDE, other tools. Blocks committing secret
+# FILES (rule #2) and secret VALUES pasted into content (gap the file-name guard
+# can't catch). Uses gitleaks if installed, else a focused high-signal regex.
+# Emergency bypass: git commit --no-verify (discouraged; you own the risk).
+set -u
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+# 1) Secret FILE names
+bad="$(printf '%s\n' "$staged" \
+  | grep -Ei '(^|/)\.env($|\.)|\.pem$|\.p12$|\.pfx$|\.key$|\.keystore$|(^|/)id_(rsa|ed25519|dsa)$' \
+  | grep -Ev '\.env\.(example|sample|template|dist)$' || true)"
+if [ -n "$bad" ]; then
+  printf 'COMMIT BLOCKED: secret file(s) staged:\n%s\nUnstage them, or commit a .env.example template instead.\n' "$bad" >&2
+  exit 1
+fi
+
+# 2) Secret VALUES in the staged diff
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact -q || {
+    echo "COMMIT BLOCKED: gitleaks detected a secret in staged content. (--no-verify to override a false positive)" >&2; exit 1; }
+else
+  added="$(git diff --cached -U0 --diff-filter=ACM | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+  hits="$(printf '%s' "$added" | grep -nEi -- \
+    'BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{16,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}' || true)"
+  if [ -n "$hits" ]; then
+    printf 'COMMIT BLOCKED: likely secret value in staged content:\n%s\nUse an env var / secret store. Override with --no-verify only for a confirmed false positive.\n' "$hits" >&2
+    exit 1
+  fi
+fi
+exit 0
