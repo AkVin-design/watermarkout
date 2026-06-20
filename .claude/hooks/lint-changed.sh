@@ -27,6 +27,9 @@ case "$SP" in
     command -v ruff >/dev/null 2>&1 && RUFF="ruff"
     [ -z "$RUFF" ] && python -m ruff --version >/dev/null 2>&1 && RUFF="python -m ruff"
     [ -z "$RUFF" ] && exit 0
+    # Only lint where the repo opts into ruff (config present), so we never
+    # impose formatting on a repo that hasn't adopted it.
+    { [ -f .ruff.toml ] || [ -f ruff.toml ] || { [ -f pyproject.toml ] && grep -q '\[tool\.ruff' pyproject.toml; }; } || exit 0
     if ! out="$($RUFF check "$SP" 2>&1)"; then
       printf 'ruff check found issues in %s:\n%s\n\nFix with: %s check --fix "%s"\n' "$SP" "$out" "$RUFF" "$SP" >&2
       exit 2

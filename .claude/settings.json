@@ -43,6 +43,19 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "D=\"${CLAUDE_PROJECT_DIR:-.}\"; [ -d \"$D/.husky\" ] || { [ -d \"$D/.githooks\" ] && git -C \"$D\" config core.hooksPath .githooks 2>/dev/null; }; true",
+            "timeout": 10,
+            "statusMessage": "activating committed git hooks (core.hooksPath)"
+          }
+        ]
+      }
     ]
   }
 }

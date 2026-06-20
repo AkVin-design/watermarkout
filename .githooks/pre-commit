@@ -34,11 +34,14 @@ else
   fi
 fi
 
-# 3) Auto-lint staged Python (zero operator burden)
+# 3) Auto-lint staged Python (zero operator burden) -- ONLY where the repo
+#    actually configures ruff, so we never impose formatting on a repo that
+#    hasn't opted in.
+ruff_configured() { [ -f .ruff.toml ] || [ -f ruff.toml ] || { [ -f pyproject.toml ] && grep -q '\[tool\.ruff' pyproject.toml; }; }
 RUFF=""
 command -v ruff >/dev/null 2>&1 && RUFF="ruff"
 [ -z "$RUFF" ] && python -m ruff --version >/dev/null 2>&1 && RUFF="python -m ruff"
-if [ -n "$RUFF" ]; then
+if [ -n "$RUFF" ] && ruff_configured; then
   pyfiles="$(printf '%s\n' "$staged" | grep -E '\.py$' || true)"
   if [ -n "$pyfiles" ]; then
     unstaged="$(git diff --name-only)"

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepare": "git config core.hooksPath .githooks || exit 0"
   },
   "dependencies": {
     "clsx": "^2.1.1",
